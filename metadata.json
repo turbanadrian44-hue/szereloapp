@@ -1,0 +1,8 @@
+{
+  "description": "AutoVeritas - Trust-based Auto Service App",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "name": "GumiAbroncs KFT."
+}
