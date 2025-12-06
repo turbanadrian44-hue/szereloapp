@@ -27,7 +27,12 @@ import {
   Edit3,
   Mic,
   Search,
-  Maximize2
+  Maximize2,
+  ToggleLeft,
+  ToggleRight,
+  Wrench,
+  Lightbulb,
+  MessageSquare
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -56,6 +61,7 @@ interface ThemeConfig {
 // --- Types ---
 
 type ClientStatus = 'ACTIVE' | 'FINISHED';
+type SmsType = 'DIAGNOSIS' | 'FINISHED' | 'START';
 
 interface ClientData {
   id: string;
@@ -68,6 +74,9 @@ interface ClientData {
   isUrgent: boolean;
   gdprAccepted: boolean;
   estimatedCost?: number;
+  laborCost?: number; 
+  partsCost?: number; 
+  useBreakdown?: boolean; 
 }
 
 interface PhotoEvidence {
@@ -131,13 +140,47 @@ const improveTemplateText = async (rawText: string): Promise<string> => {
   }
 };
 
-const generateStaticSms = (diagnosis: string, plate: string, cost: number | undefined, photoUrls: string[]): string => {
+// Modified SMS Generator
+const generateStaticSms = (
+  type: SmsType, 
+  diagnosis: string, 
+  plate: string, 
+  cost: number | undefined, 
+  partsCost: number | undefined,
+  laborCost: number | undefined,
+  useBreakdown: boolean | undefined,
+  photoUrls: string[], 
+  shopName: string
+): string => {
+  
+  let costSection = '';
   const costStr = cost ? cost.toLocaleString('hu-HU') : '0';
   
-  let sms = `Üdvözlöm! Átvizsgáltuk a ${plate} autóját. A következő beavatkozás szükséges: ${diagnosis}. Az alkatrész és munkadíj összesen: ${costStr} Ft.`;
+  if (cost) {
+    if (useBreakdown && (partsCost || laborCost)) {
+      // Detailed Breakdown
+      costSection = ` A várható költségek: Alkatrész: ${(partsCost || 0).toLocaleString('hu-HU')} Ft, Munkadíj: ${(laborCost || 0).toLocaleString('hu-HU')} Ft. Összesen: ${costStr} Ft.`;
+    } else {
+      // Simple Total
+      costSection = ` A javítás várható költsége: ${costStr} Ft.`;
+    }
+  }
 
-  if (photoUrls.length > 0) {
-    sms += `\n\nFotók a hibáról:\n${photoUrls.join('\n')}`;
+  let sms = '';
+
+  if (type === 'DIAGNOSIS') {
+    sms = `Üdvözlöm! Átvizsgáltuk a ${plate} autóját a ${shopName}-nél. A következő beavatkozás szükséges: ${diagnosis}.${costSection} Kérjük, válasz SMS-ben jelezze, hogy elfogadja-e a javítást!`;
+  } else if (type === 'FINISHED') {
+    // FINISHED Template - Now includes PRICE
+    const priceText = cost ? ` A fizetendő végösszeg: ${costStr} Ft.` : '';
+    sms = `Tisztelt Ügyfelünk! A ${plate} rendszámú autója elkészült, a javítás befejeződött a ${shopName}-nél.${priceText} Várjuk szervizünkben, az autó átvehető. Üdvözlettel!`;
+  } else if (type === 'START') {
+    // START Template
+    sms = `Tisztelt Ügyfelünk! Tájékoztatjuk, hogy a ${plate} rendszámú autóján a javítási munkálatokat megkezdtük a ${shopName}-nél. Amint elkészül, azonnal értesítjük.`;
+  }
+
+  if (photoUrls.length > 0 && type === 'DIAGNOSIS') {
+    sms += `\n\nFotók a munkáról:\n${photoUrls.join('\n')}`;
   }
 
   return sms;
@@ -174,201 +217,66 @@ const uploadImageToCloudinary = async (photo: PhotoEvidence): Promise<string | n
 // --- Input Formatters ---
 
 const formatLicensePlate = (value: string) => {
-  // Remove non-alphanumeric and uppercase
-  const clean = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  
-  // Format for standard Hungarian plates (AA-AA-123 or AAA-123)
-  if (clean.length > 0) {
-    if (clean.length <= 3) return clean;
-    if (clean.length <= 5) return `${clean.slice(0, 3)}-${clean.slice(3)}`;
-    if (clean.length <= 6) return `${clean.slice(0, 3)}-${clean.slice(3)}`; // AAA-123
-    return `${clean.slice(0, 2)}-${clean.slice(2, 4)}-${clean.slice(4, 7)}`; // AA-AA-123 format attempt
+  let clean = value.toUpperCase();
+  if (/^[A-Z0-9]{6}$/.test(clean)) {
+     return `${clean.slice(0,3)}-${clean.slice(3)}`;
   }
   return clean;
 };
 
 const formatPhoneNumber = (value: string) => {
-  // Allow only numbers and plus sign
-  const clean = value.replace(/[^\d+]/g, '');
-  // Very basic formatting visualization could go here, but keeping it simple is safer for interaction
-  return clean;
+  return value.replace(/[^\d+ ]/g, '');
 };
 
 const formatCost = (value: string) => {
   const number = parseInt(value.replace(/\D/g, '')) || 0;
-  return number.toLocaleString('hu-HU');
+  return number === 0 ? '' : number.toLocaleString('hu-HU');
 };
 
-// --- Components ---
+const parseCost = (value: string) => {
+  return parseInt(value.replace(/\D/g, '')) || 0;
+}
 
-const App = () => {
-  const [settings, setSettings] = useState<ShopSettings>(() => {
-    const saved = localStorage.getItem('auto_settings');
-    return saved ? JSON.parse(saved) : null;
-  });
+// --- SUB-COMPONENTS (Defined BEFORE App to fix ReferenceError) ---
 
-  const [clients, setClients] = useState<ClientData[]>(() => {
-    const saved = localStorage.getItem('auto_clients');
-    return saved ? JSON.parse(saved) : [];
-  });
+// --- Component: Start Repair Modal (NEW) ---
+const StartRepairModal = ({ 
+  client, shopName, onClose 
+}: { 
+  client: ClientData, shopName: string, onClose: () => void 
+}) => {
+  const smsText = generateStaticSms('START', '', client.licensePlate, undefined, undefined, undefined, false, [], shopName);
 
-  const [quickActions, setQuickActions] = useState<string[]>(() => {
-    const saved = localStorage.getItem('auto_actions');
-    return saved ? JSON.parse(saved) : [
-      "Olajcsere esedékes",
-      "Fékbetét kopott, csere javasolt",
-      "Műszaki vizsga hamarosan lejár",
-      "Akkumulátor gyenge, cserélni kell"
-    ];
-  });
-
-  const [currentView, setCurrentView] = useState<ViewState>(settings ? 'DASHBOARD' : 'ONBOARDING');
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-
-  useEffect(() => {
-    if (settings) localStorage.setItem('auto_settings', JSON.stringify(settings));
-  }, [settings]);
-
-  useEffect(() => {
-    localStorage.setItem('auto_clients', JSON.stringify(clients));
-  }, [clients]);
-
-  useEffect(() => {
-    localStorage.setItem('auto_actions', JSON.stringify(quickActions));
-  }, [quickActions]);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  const theme = THEMES[settings?.themeColor || 'orange'];
-
-  const handleOnboardingComplete = (newSettings: ShopSettings) => {
-    setSettings(newSettings);
-    setCurrentView('DASHBOARD');
+  const handleSend = () => {
+    const link = `sms:${client.phone}?body=${encodeURIComponent(smsText)}`;
+    window.location.href = link;
+    onClose();
   };
-
-  const handleAddClient = (data: any) => {
-    const newClient: ClientData = {
-      id: Date.now().toString(),
-      ...data,
-      photos: [],
-      status: 'ACTIVE',
-      createdAt: Date.now()
-    };
-    setClients([newClient, ...clients]);
-    setCurrentView('DASHBOARD');
-  };
-
-  const handleDeleteClient = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setClientToDelete(id);
-  };
-
-  const executeDelete = () => {
-    if (clientToDelete) {
-      setClients(clients.filter(c => c.id !== clientToDelete));
-      if (selectedClientId === clientToDelete) {
-        setSelectedClientId(null);
-        setCurrentView('DASHBOARD');
-      }
-      setClientToDelete(null);
-    }
-  };
-
-  const handleUpdateClient = (updatedClient: ClientData) => {
-    setClients(clients.map(c => c.id === updatedClient.id ? updatedClient : c));
-  };
-
-  const handleExportData = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(clients));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `szerviz_mentes_${new Date().toISOString().slice(0,10)}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-  };
-
-  const activeClient = clients.find(c => c.id === selectedClientId);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans selection:bg-orange-100">
-      {!isOnline && (
-        <div className="bg-amber-100 text-amber-800 px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 border-b border-amber-200 sticky top-0 z-50">
-          <WifiOff size={14} /> OFFLINE MÓD - A képek nem kerülnek feltöltésre (AI inaktív)!
-        </div>
-      )}
-
-      {currentView === 'ONBOARDING' && (
-        <OnboardingScreen onComplete={handleOnboardingComplete} />
-      )}
-
-      {currentView === 'DASHBOARD' && settings && (
-        <DashboardScreen 
-          settings={settings}
-          theme={theme}
-          clients={clients} 
-          onAdd={() => setCurrentView('INTAKE')}
-          onOpen={(id) => { setSelectedClientId(id); setCurrentView('WORKSHOP'); }}
-          onDelete={handleDeleteClient}
-          onOpenSettings={() => setShowSettingsModal(true)}
-        />
-      )}
-
-      {currentView === 'INTAKE' && theme && (
-        <IntakeScreen 
-          theme={theme}
-          onSave={handleAddClient} 
-          onCancel={() => setCurrentView('DASHBOARD')} 
-        />
-      )}
-
-      {currentView === 'WORKSHOP' && activeClient && theme && (
-        <WorkshopScreen 
-          client={activeClient} 
-          theme={theme}
-          isOnline={isOnline} 
-          onUpdateClient={handleUpdateClient}
-          onBack={() => { setSelectedClientId(null); setCurrentView('DASHBOARD'); }}
-          quickActions={quickActions}
-          setQuickActions={setQuickActions}
-        />
-      )}
-
-      {clientToDelete && theme && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in-up">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-gray-100">
-            <h3 className="text-xl font-bold text-gray-900 mb-2 text-center">Munkalap törlése</h3>
-            <p className="text-gray-500 mb-8 text-center text-sm">Biztosan törlöd? Nem visszavonható.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setClientToDelete(null)} className="flex-1 py-4 bg-gray-100 rounded-xl font-bold">Mégsem</button>
-              <button onClick={executeDelete} className="flex-1 py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg">Törlés</button>
-            </div>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in-up">
+      <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 border border-gray-100">
+        <div className="flex justify-center mb-4">
+          <div className="bg-blue-100 p-3 rounded-full text-blue-600">
+            <MessageSquare size={32} />
           </div>
         </div>
-      )}
+        <h3 className="text-xl font-bold text-gray-900 mb-2 text-center">Javítás Megkezdése</h3>
+        <p className="text-sm text-gray-500 mb-4 text-center">
+          Az alábbi SMS-t küldjük az ügyfélnek:
+        </p>
+        
+        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 relative">
+          <p className="text-gray-800 text-sm font-medium italic">"{smsText}"</p>
+        </div>
 
-      {showSettingsModal && theme && (
-        <SettingsModal 
-          onClose={() => setShowSettingsModal(false)}
-          theme={theme}
-          onExport={handleExportData}
-          quickActions={quickActions}
-          setQuickActions={setQuickActions}
-          isOnline={isOnline}
-        />
-      )}
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-600">Mégse</button>
+          <button onClick={handleSend} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 flex items-center justify-center gap-2">
+            <Send size={16} /> Küldés
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -579,9 +487,9 @@ const OnboardingScreen = ({ onComplete }: { onComplete: (s: ShopSettings) => voi
 
 // --- Screen: Dashboard ---
 const DashboardScreen = ({ 
-  clients, onAdd, onOpen, onDelete, onOpenSettings, settings, theme 
+  clients, onAdd, onOpen, onDelete, onStart, onOpenSettings, settings, theme 
 }: { 
-  clients: ClientData[], onAdd: () => void, onOpen: (id: string) => void, onDelete: any, onOpenSettings: any, settings: ShopSettings, theme: ThemeConfig
+  clients: ClientData[], onAdd: () => void, onOpen: (id: string) => void, onDelete: any, onStart: (client: ClientData, e: React.MouseEvent) => void, onOpenSettings: any, settings: ShopSettings, theme: ThemeConfig
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -611,6 +519,14 @@ const DashboardScreen = ({
         <button onClick={onOpenSettings} className="p-2 bg-white border border-gray-100 rounded-xl shadow-sm text-gray-400 hover:text-gray-600">
           <Settings size={20} />
         </button>
+      </div>
+
+      {/* TIP Banner */}
+      <div className="mb-6 bg-blue-50 border border-blue-100 p-4 rounded-2xl flex items-start gap-3">
+        <Lightbulb size={20} className="text-blue-500 shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-800 leading-relaxed font-medium">
+          <span className="font-bold">TIPP:</span> A köztes státuszüzenetek ('Javítás Megkezdése') statisztikailag felére csökkentik a türelmetlen telefonhívásokat és növelik a szerviz szakmai megítélését.
+        </p>
       </div>
 
       <button onClick={onAdd} className={`w-full mb-6 ${theme.bg} ${theme.hover} text-white py-4 rounded-2xl font-bold shadow-xl ${theme.shadow} transform transition active:scale-95 flex items-center justify-center gap-2`}>
@@ -649,14 +565,27 @@ const DashboardScreen = ({
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 font-bold text-lg ${client.status === 'FINISHED' ? 'bg-emerald-100 text-emerald-600' : theme.light + ' ' + theme.text}`}>
                   {client.status === 'FINISHED' ? <Check size={24} /> : client.licensePlate.substring(0, 2)}
                 </div>
-                <div className="flex-1 pr-10">
+                <div className="flex-1 pr-24">
                   <h3 className="font-bold text-lg text-gray-900 font-mono">{client.licensePlate}</h3>
                   <p className="text-sm text-gray-500 font-medium">{client.name}</p>
                 </div>
               </div>
-              <button onClick={(e) => onDelete(client.id, e)} className="absolute top-2 right-2 p-3 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors z-20 active:scale-95">
-                <Trash2 size={20} className="pointer-events-none" />
+              
+              {/* Quick Actions for Active Clients */}
+              {client.status === 'ACTIVE' && (
+                <button 
+                  onClick={(e) => onStart(client, e)}
+                  className="absolute top-4 right-14 p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors z-20 active:scale-95 flex items-center gap-1"
+                  title="Javítás indítása SMS"
+                >
+                  <Wrench size={16} /> <span className="text-[10px] font-bold">MEGKEZDÉS</span>
+                </button>
+              )}
+
+              <button onClick={(e) => onDelete(client.id, e)} className="absolute top-4 right-2 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors z-20 active:scale-95">
+                <Trash2 size={18} className="pointer-events-none" />
               </button>
+
               {client.status === 'FINISHED' && (
                 <div className="absolute bottom-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-tl-xl pointer-events-none flex items-center gap-1">
                   <CheckCircle size={10} /> KÉSZ
@@ -680,7 +609,7 @@ const IntakeScreen = ({ onSave, onCancel, theme }: { onSave: (data: any) => void
     gdprAccepted: false
   });
 
-  const isValid = formData.name && formData.licensePlate.length >= 6 && formData.phone.length > 7 && formData.gdprAccepted;
+  const isValid = formData.name && formData.licensePlate.length >= 3 && formData.phone.length > 7 && formData.gdprAccepted;
 
   return (
     <div className="max-w-md mx-auto p-6 min-h-screen flex flex-col justify-center animate-fade-in-up">
@@ -722,32 +651,62 @@ const IntakeScreen = ({ onSave, onCancel, theme }: { onSave: (data: any) => void
 
 // --- Screen: Workshop ---
 const WorkshopScreen = ({ 
-  client, isOnline, onBack, onUpdateClient, quickActions, setQuickActions, theme
+  client, isOnline, onBack, onUpdateClient, quickActions, setQuickActions, theme, shopName
 }: { 
-  client: ClientData, isOnline: boolean, onBack: () => void, onUpdateClient: (c: ClientData) => void, quickActions: string[], setQuickActions: any, theme: ThemeConfig
+  client: ClientData, isOnline: boolean, onBack: () => void, onUpdateClient: (c: ClientData) => void, quickActions: string[], setQuickActions: any, theme: ThemeConfig, shopName: string
 }) => {
   const [diagnosis, setDiagnosis] = useState('');
-  const [estimatedCost, setEstimatedCost] = useState<string>(client.estimatedCost ? client.estimatedCost.toLocaleString('hu-HU') : '');
+  
+  // Pricing State
+  const [useBreakdown, setUseBreakdown] = useState(client.useBreakdown || false);
+  const [estimatedCost, setEstimatedCost] = useState<string>(client.estimatedCost ? formatCost(client.estimatedCost.toString()) : '');
+  const [laborCost, setLaborCost] = useState<string>(client.laborCost ? formatCost(client.laborCost.toString()) : '');
+  const [partsCost, setPartsCost] = useState<string>(client.partsCost ? formatCost(client.partsCost.toString()) : '');
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBeautifying, setIsBeautifying] = useState(false);
   const [isAddingAction, setIsAddingAction] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [generatedSms, setGeneratedSms] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false); // Check support
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const photos = client.photos;
 
+  useEffect(() => {
+    // Check speech support on mount
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      setIsSpeechSupported(true);
+    }
+  }, []);
+
+  // Auto-calculate Total Cost when in Breakdown mode
+  useEffect(() => {
+    if (useBreakdown) {
+      const l = parseCost(laborCost);
+      const p = parseCost(partsCost);
+      setEstimatedCost(formatCost((l + p).toString()));
+    }
+  }, [laborCost, partsCost, useBreakdown]);
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       const newPhotos: PhotoEvidence[] = Array.from(event.target.files).map(file => ({
         id: Date.now().toString() + Math.random(),
-        url: URL.createObjectURL(file),
+        url: URL.createObjectURL(file as Blob),
         source: 'GALLERY',
         status: 'PENDING_UPLOAD'
       }));
-      onUpdateClient({ ...client, photos: [...photos, ...newPhotos] });
+      
+      const updatedClient = { ...client, photos: [...photos, ...newPhotos] };
+      onUpdateClient(updatedClient);
+      
+      // Trigger upload IMMEDIATELY in background
+      if (isOnline) {
+        processPhotoUploads(updatedClient.photos);
+      }
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -756,22 +715,29 @@ const WorkshopScreen = ({
     onUpdateClient({ ...client, photos: photos.filter(p => p.id !== photoId) });
   };
 
-  const processPhotoUploads = async (): Promise<string[]> => {
+  const processPhotoUploads = async (currentPhotos: PhotoEvidence[] = photos): Promise<string[]> => {
     if (!isOnline) return [];
-    const pendingPhotos = photos.filter(p => !p.cloudUrl);
-    if (pendingPhotos.length === 0) return photos.map(p => p.cloudUrl).filter(Boolean) as string[];
+    
+    // Filter pending
+    const pendingPhotos = currentPhotos.filter(p => !p.cloudUrl);
+    
+    // If nothing pending, return existing cloud URLs
+    if (pendingPhotos.length === 0) {
+        return currentPhotos.map(p => p.cloudUrl).filter(Boolean) as string[];
+    }
 
-    setUploadProgress(`Feltöltés... 0/${pendingPhotos.length}`);
-    let updatedPhotos = [...photos];
-    let completed = 0;
+    setUploadProgress(`Képek feltöltése...`);
+    let updatedPhotos = [...currentPhotos];
 
     for (const photo of pendingPhotos) {
       const cloudUrl = await uploadImageToCloudinary(photo);
-      if (cloudUrl) updatedPhotos = updatedPhotos.map(p => p.id === photo.id ? { ...p, cloudUrl, status: 'UPLOADED' } : p);
-      completed++;
-      setUploadProgress(`Feltöltés... ${completed}/${pendingPhotos.length}`);
+      if (cloudUrl) {
+          updatedPhotos = updatedPhotos.map(p => p.id === photo.id ? { ...p, cloudUrl, status: 'UPLOADED' } : p);
+          // Update client state progressively so UI reflects uploaded status
+          onUpdateClient({ ...client, photos: updatedPhotos }); 
+      }
     }
-    onUpdateClient({ ...client, photos: updatedPhotos });
+    
     setUploadProgress('');
     return updatedPhotos.map(p => p.cloudUrl).filter(Boolean) as string[];
   };
@@ -785,10 +751,7 @@ const WorkshopScreen = ({
   };
 
   const startDictation = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert("A böngésző nem támogatja a hangfelismerést.");
-      return;
-    }
+    if (!isSpeechSupported) return;
     
     // @ts-ignore
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -815,17 +778,40 @@ const WorkshopScreen = ({
     recognition.start();
   };
 
-  const handleGenerateSMS = async () => {
-    if (!diagnosis) return;
+  const handleGenerateSMS = async (type: SmsType) => {
+    if (type === 'DIAGNOSIS' && !diagnosis) return;
     setIsProcessing(true);
     
-    const numericCost = parseInt(estimatedCost.replace(/\D/g, '')) || 0;
-    onUpdateClient({ ...client, estimatedCost: numericCost });
+    const numericCost = parseCost(estimatedCost);
+    const numericLabor = parseCost(laborCost);
+    const numericParts = parseCost(partsCost);
 
+    // Update Client Data with Costs
+    onUpdateClient({ 
+        ...client, 
+        estimatedCost: numericCost,
+        laborCost: numericLabor,
+        partsCost: numericParts,
+        useBreakdown: useBreakdown
+    });
+
+    // Ensure uploads are done (usually they are already done in background)
     let photoUrls: string[] = [];
-    if (isOnline && photos.length > 0) photoUrls = await processPhotoUploads();
+    if (isOnline) {
+       photoUrls = await processPhotoUploads(client.photos);
+    }
     
-    const sms = generateStaticSms(diagnosis, client.licensePlate, numericCost, photoUrls);
+    const sms = generateStaticSms(
+        type, 
+        diagnosis, 
+        client.licensePlate, 
+        numericCost, 
+        numericParts,
+        numericLabor,
+        useBreakdown,
+        photoUrls, 
+        shopName
+    );
     
     if (!isOnline && photos.length > 0) {
       setGeneratedSms(sms + "\n(A fotókat internet hiánya miatt nem tudtuk csatolni.)");
@@ -861,7 +847,11 @@ const WorkshopScreen = ({
       <div className="p-6 space-y-8 flex-1">
         <section>
           <div className="flex justify-between items-center mb-5">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Dokumentáció</h3>
+            <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Dokumentáció</h3>
+                {uploadProgress && <span className="text-xs text-orange-500 animate-pulse">{uploadProgress}</span>}
+            </div>
+            
             <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
             <button onClick={() => fileInputRef.current?.click()} className={`bg-gray-900 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg`}>
               <Camera size={16} /> FOTÓ / GALÉRIA
@@ -872,6 +862,13 @@ const WorkshopScreen = ({
             {photos.map(photo => (
               <div key={photo.id} className="aspect-square rounded-2xl overflow-hidden relative shadow-sm bg-gray-50 border border-gray-100 group cursor-pointer" onClick={() => setPreviewPhotoUrl(photo.url)}>
                 <img src={photo.url} className="w-full h-full object-cover" />
+                
+                {/* Upload Indicator */}
+                <div className="absolute bottom-1 left-1">
+                    {photo.status === 'UPLOADED' && <div className="bg-emerald-500 text-white p-1 rounded-full"><Check size={8}/></div>}
+                    {photo.status === 'PENDING_UPLOAD' && <div className="bg-orange-500 text-white p-1 rounded-full animate-spin"><Loader2 size={8}/></div>}
+                </div>
+
                 <button onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo.id); }} className="absolute top-1 right-1 bg-white/80 text-red-500 p-1 rounded-full shadow-sm hover:bg-white z-10"><X size={12} /></button>
                 <div className="absolute inset-0 flex items-center justify-center bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Maximize2 className="text-white drop-shadow-md" size={24} />
@@ -900,20 +897,24 @@ const WorkshopScreen = ({
               </button>
            </div>
 
-           <div className="space-y-4">
+           <div className="space-y-6">
              <div className="relative">
                 <textarea 
                   value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)}
-                  className={`w-full bg-gray-50 border-0 rounded-2xl p-5 text-gray-900 focus:ring-2 ${theme.ring} min-h-[100px] resize-none pb-12`}
+                  className={`w-full bg-gray-50 border-0 rounded-2xl p-5 text-gray-900 focus:ring-2 ${theme.ring} min-h-[120px] resize-none pb-12 text-lg`}
                   placeholder="Hiba leírása..."
                 />
-                <button 
-                  onClick={startDictation}
-                  className={`absolute bottom-3 left-3 p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                  title="Hangalapú bevitel"
-                >
-                  <Mic size={18} />
-                </button>
+                
+                {isSpeechSupported && (
+                    <button 
+                    onClick={startDictation}
+                    className={`absolute bottom-3 left-3 p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                    title="Hangalapú bevitel"
+                    >
+                    <Mic size={18} />
+                    </button>
+                )}
+
                 <button 
                   onClick={handleBeautify}
                   disabled={!isOnline || !diagnosis || isBeautifying}
@@ -928,29 +929,81 @@ const WorkshopScreen = ({
                 </button>
              </div>
 
-             <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400"><Coins size={18}/></div>
-                <input 
-                  type="text" 
-                  value={estimatedCost}
-                  onChange={(e) => setEstimatedCost(formatCost(e.target.value))}
-                  placeholder="Várható költség (Ft)"
-                  className={`w-full bg-gray-50 border-0 rounded-2xl py-4 pl-12 pr-4 text-gray-900 focus:ring-2 ${theme.ring} font-mono font-bold`}
-                />
+             {/* PRICING SECTION */}
+             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                <button 
+                    onClick={() => setUseBreakdown(!useBreakdown)}
+                    className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 hover:text-gray-800 transition-colors"
+                >
+                    {useBreakdown ? <ToggleRight size={20} className="text-orange-500"/> : <ToggleLeft size={20}/>}
+                    Anyag + Munkadíj külön (Ajánlott)
+                </button>
+
+                {/* TIP for breakdown */}
+                {useBreakdown && (
+                  <div className="mb-4 bg-yellow-50 text-yellow-700 text-[10px] p-2 rounded-lg border border-yellow-100 flex items-start gap-2">
+                    <Lightbulb size={14} className="shrink-0 mt-0.5" />
+                    <span>TIPP: A bontott árajánlatokat (Anyag/Munkadíj) 30%-kal nagyobb arányban fogadják el alku nélkül.</span>
+                  </div>
+                )}
+
+                {useBreakdown ? (
+                    <div className="grid grid-cols-2 gap-3 mb-3 animate-fade-in-up">
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Alkatrész</label>
+                            <input 
+                                type="text" 
+                                value={partsCost}
+                                onChange={(e) => setPartsCost(formatCost(e.target.value))}
+                                placeholder="0"
+                                className="w-full bg-white border border-gray-200 rounded-xl py-3 px-3 text-gray-900 font-mono font-bold text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Munkadíj</label>
+                            <input 
+                                type="text" 
+                                value={laborCost}
+                                onChange={(e) => setLaborCost(formatCost(e.target.value))}
+                                placeholder="0"
+                                className="w-full bg-white border border-gray-200 rounded-xl py-3 px-3 text-gray-900 font-mono font-bold text-sm"
+                            />
+                        </div>
+                    </div>
+                ) : null}
+
+                <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400"><Coins size={18}/></div>
+                    <input 
+                    type="text" 
+                    value={estimatedCost}
+                    readOnly={useBreakdown}
+                    onChange={(e) => !useBreakdown && setEstimatedCost(formatCost(e.target.value))}
+                    placeholder="Várható költség (Ft)"
+                    className={`w-full bg-white border-0 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:ring-2 ${theme.ring} font-mono font-bold text-xl ${useBreakdown ? 'bg-gray-100 text-gray-500' : ''}`}
+                    />
+                    {useBreakdown && <div className="absolute right-4 top-4 text-xs text-gray-400 font-bold">ÖSSZESEN</div>}
+                </div>
              </div>
            </div>
 
            {!generatedSms ? (
              <div className="mt-6 space-y-4">
                 <button 
-                  onClick={handleGenerateSMS}
+                  onClick={() => handleGenerateSMS('DIAGNOSIS')}
                   disabled={!diagnosis || isProcessing}
                   className={`w-full py-4 text-white rounded-xl font-bold shadow-xl transform transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 ${theme.bg} ${theme.shadow}`}
                 >
-                  {isProcessing ? <><Loader2 size={20} className="animate-spin" /> {uploadProgress || 'SMS Tervezése...'}</> : 'SMS TERVEZÉS (Sablon)'}
+                  {isProcessing ? <><Loader2 size={20} className="animate-spin" /> {uploadProgress || 'SMS Tervezése...'}</> : 'SMS TERVEZÉS (Diagnózis)'}
                 </button>
-                <button onClick={() => { onUpdateClient({ ...client, status: 'FINISHED' }); setGeneratedSms("Autó kész!"); }} className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center gap-2">
-                  <CheckCircle size={20} /> AUTÓ KÉSZ (SABLON)
+                <button 
+                  onClick={() => { 
+                    onUpdateClient({ ...client, status: 'FINISHED' }); 
+                    handleGenerateSMS('FINISHED'); 
+                  }} 
+                  className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={20} /> AUTÓ KÉSZ (Átvétel)
                 </button>
              </div>
            ) : (
@@ -984,6 +1037,198 @@ const WorkshopScreen = ({
           <button className="absolute top-4 right-4 text-white p-2 bg-white/20 rounded-full hover:bg-white/40"><X size={32}/></button>
           <img src={previewPhotoUrl} className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} />
         </div>
+      )}
+    </div>
+  );
+};
+
+// --- App Component (Moved to end) ---
+
+const App = () => {
+  const [settings, setSettings] = useState<ShopSettings>(() => {
+    const saved = localStorage.getItem('auto_settings');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [clients, setClients] = useState<ClientData[]>(() => {
+    const saved = localStorage.getItem('auto_clients');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [quickActions, setQuickActions] = useState<string[]>(() => {
+    const saved = localStorage.getItem('auto_actions');
+    return saved ? JSON.parse(saved) : [
+      "Olajcsere esedékes",
+      "Fékbetét kopott, csere javasolt",
+      "Műszaki vizsga hamarosan lejár",
+      "Akkumulátor gyenge, cserélni kell"
+    ];
+  });
+
+  const [currentView, setCurrentView] = useState<ViewState>(settings ? 'DASHBOARD' : 'ONBOARDING');
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
+  const [clientToStart, setClientToStart] = useState<ClientData | null>(null); // New state for Start Modal
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  useEffect(() => {
+    if (settings) localStorage.setItem('auto_settings', JSON.stringify(settings));
+  }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem('auto_clients', JSON.stringify(clients));
+  }, [clients]);
+
+  useEffect(() => {
+    localStorage.setItem('auto_actions', JSON.stringify(quickActions));
+  }, [quickActions]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const theme = THEMES[settings?.themeColor || 'orange'];
+
+  const handleOnboardingComplete = (newSettings: ShopSettings) => {
+    setSettings(newSettings);
+    setCurrentView('DASHBOARD');
+  };
+
+  const handleAddClient = (data: any) => {
+    const newClient: ClientData = {
+      id: Date.now().toString(),
+      ...data,
+      photos: [],
+      status: 'ACTIVE',
+      createdAt: Date.now()
+    };
+    setClients([newClient, ...clients]);
+    setCurrentView('DASHBOARD');
+  };
+
+  const handleDeleteClient = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setClientToDelete(id);
+  };
+
+  const handleQuickStartSMS = (client: ClientData, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Instead of sending immediately, we set the client to start, which triggers the modal
+    setClientToStart(client);
+  };
+
+  const executeDelete = () => {
+    if (clientToDelete) {
+      setClients(clients.filter(c => c.id !== clientToDelete));
+      if (selectedClientId === clientToDelete) {
+        setSelectedClientId(null);
+        setCurrentView('DASHBOARD');
+      }
+      setClientToDelete(null);
+    }
+  };
+
+  const handleUpdateClient = (updatedClient: ClientData) => {
+    setClients(clients.map(c => c.id === updatedClient.id ? updatedClient : c));
+  };
+
+  const handleExportData = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(clients));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `szerviz_mentes_${new Date().toISOString().slice(0,10)}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
+  const activeClient = clients.find(c => c.id === selectedClientId);
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans selection:bg-orange-100">
+      {!isOnline && (
+        <div className="bg-amber-100 text-amber-800 px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 border-b border-amber-200 sticky top-0 z-50">
+          <WifiOff size={14} /> OFFLINE MÓD - A képek nem kerülnek feltöltésre (AI inaktív)!
+        </div>
+      )}
+
+      {currentView === 'ONBOARDING' && (
+        <OnboardingScreen onComplete={handleOnboardingComplete} />
+      )}
+
+      {currentView === 'DASHBOARD' && settings && (
+        <DashboardScreen 
+          settings={settings}
+          theme={theme}
+          clients={clients} 
+          onAdd={() => setCurrentView('INTAKE')}
+          onOpen={(id) => { setSelectedClientId(id); setCurrentView('WORKSHOP'); }}
+          onDelete={handleDeleteClient}
+          onStart={handleQuickStartSMS}
+          onOpenSettings={() => setShowSettingsModal(true)}
+        />
+      )}
+
+      {currentView === 'INTAKE' && theme && (
+        <IntakeScreen 
+          theme={theme}
+          onSave={handleAddClient} 
+          onCancel={() => setCurrentView('DASHBOARD')} 
+        />
+      )}
+
+      {currentView === 'WORKSHOP' && activeClient && theme && settings && (
+        <WorkshopScreen 
+          client={activeClient} 
+          theme={theme}
+          isOnline={isOnline} 
+          onUpdateClient={handleUpdateClient}
+          onBack={() => { setSelectedClientId(null); setCurrentView('DASHBOARD'); }}
+          quickActions={quickActions}
+          setQuickActions={setQuickActions}
+          shopName={settings.shopName}
+        />
+      )}
+
+      {/* Start Repair Modal (NEW) */}
+      {clientToStart && settings && (
+        <StartRepairModal 
+          client={clientToStart}
+          shopName={settings.shopName}
+          onClose={() => setClientToStart(null)}
+        />
+      )}
+
+      {clientToDelete && theme && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in-up">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-gray-100">
+            <h3 className="text-xl font-bold text-gray-900 mb-2 text-center">Munkalap törlése</h3>
+            <p className="text-gray-500 mb-8 text-center text-sm">Biztosan törlöd? Nem visszavonható.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setClientToDelete(null)} className="flex-1 py-4 bg-gray-100 rounded-xl font-bold">Mégsem</button>
+              <button onClick={executeDelete} className="flex-1 py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg">Törlés</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSettingsModal && theme && (
+        <SettingsModal 
+          onClose={() => setShowSettingsModal(false)}
+          theme={theme}
+          onExport={handleExportData}
+          quickActions={quickActions}
+          setQuickActions={setQuickActions}
+          isOnline={isOnline}
+        />
       )}
     </div>
   );
