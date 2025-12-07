@@ -264,6 +264,12 @@ const FeatureGateModal = ({
 }: { 
   feature: 'LOGO' | 'AI' | 'LIMIT', onClose: () => void, onActivate: () => void 
 }) => {
+  
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const content = {
     LOGO: {
       title: "Tedd profibbá a megjelenésed!",
@@ -318,6 +324,11 @@ const FeatureGateModal = ({
 };
 
 const BackupReminderModal = ({ onClose, onExport, theme }: { onClose: () => void, onExport: () => void, theme: ThemeConfig }) => {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   return (
     <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-6 animate-fade-in-up">
       <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border-4 border-yellow-400">
@@ -354,6 +365,11 @@ const StartRepairModal = ({
 }: { 
   client: ClientData, shopName: string, onClose: () => void, isDark: boolean 
 }) => {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const smsText = generateStaticSms('START', '', client.licensePlate, undefined, undefined, undefined, false, [], shopName);
 
   const handleSend = () => {
@@ -410,11 +426,20 @@ const SettingsModal = ({
   const logoInputRef = useRef<HTMLInputElement>(null);
   const isDark = settings.darkMode;
 
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const handleDeleteAction = (index: number) => {
     setQuickActions(quickActions.filter((_, i) => i !== index));
   };
 
   const handleImproveAction = async () => {
+    if (!settings.isPro) {
+        onShowSales('AI');
+        return;
+    }
     if (!newAction.trim() || !isOnline) return;
     setIsImproving(true);
     const improved = await improveTemplateText(newAction);
@@ -534,7 +559,7 @@ const SettingsModal = ({
                   className={`w-16 h-16 rounded-xl border-2 border-dashed flex items-center justify-center overflow-hidden cursor-pointer relative group ${isDark ? 'border-slate-600 bg-slate-700' : 'border-gray-300 bg-gray-50'} ${!settings.isPro ? 'opacity-50' : ''}`}
                   onClick={() => logoInputRef.current?.click()}
                 >
-                  {settings.logoUrl ? (
+                  {(settings.logoUrl && settings.isPro) ? (
                     <img src={settings.logoUrl} className="w-full h-full object-contain" />
                   ) : (
                     <Upload size={20} className={isDark ? 'text-slate-400' : 'text-gray-400'}/>
@@ -618,10 +643,10 @@ const SettingsModal = ({
               />
               <button 
                 onClick={handleImproveAction}
-                disabled={!isOnline || !newAction || isImproving || !settings.isPro}
-                className={`p-3 rounded-xl transition-all ${isOnline && newAction && settings.isPro ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200' : (isDark ? 'bg-slate-700 text-slate-500' : 'bg-gray-100 text-gray-400')}`}
+                disabled={!isOnline || !newAction || isImproving}
+                className={`p-3 rounded-xl transition-all ${isOnline && newAction ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200' : (isDark ? 'bg-slate-700 text-slate-500' : 'bg-gray-100 text-gray-400')}`}
               >
-                {settings.isPro ? (isImproving ? <Loader2 size={20} className="animate-spin"/> : <Sparkles size={20} />) : <Lock size={20} />}
+                {(!settings.isPro) ? <Lock size={20} /> : (isImproving ? <Loader2 size={20} className="animate-spin"/> : <Sparkles size={20} />)}
               </button>
               <button 
                 onClick={handleAddAction}
@@ -691,14 +716,23 @@ const SettingsModal = ({
 };
 
 const AddActionModal = ({ 
-  onClose, onSave, isOnline, themeColor, isDark
+  onClose, onSave, isOnline, themeColor, isDark, isPro, onShowSales
 }: { 
-  onClose: () => void, onSave: (text: string) => void, isOnline: boolean, themeColor: string, isDark: boolean
+  onClose: () => void, onSave: (text: string) => void, isOnline: boolean, themeColor: string, isDark: boolean, isPro: boolean, onShowSales: (f: 'AI') => void
 }) => {
   const [newAction, setNewAction] = useState('');
   const [isImproving, setIsImproving] = useState(false);
 
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const handleImproveAction = async () => {
+    if (!isPro) {
+      onShowSales('AI');
+      return;
+    }
     if (!newAction.trim() || !isOnline) return;
     setIsImproving(true);
     const improved = await improveTemplateText(newAction);
@@ -728,7 +762,7 @@ const AddActionModal = ({
             disabled={!isOnline || !newAction || isImproving}
             className={`p-3 rounded-xl transition-all ${isOnline && newAction ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200' : (isDark ? 'bg-slate-700 text-slate-500' : 'bg-gray-100 text-gray-400')}`}
           >
-            {isImproving ? <Loader2 size={20} className="animate-spin"/> : <Sparkles size={20} />}
+            {!isPro ? <Lock size={20}/> : (isImproving ? <Loader2 size={20} className="animate-spin"/> : <Sparkles size={20} />)}
           </button>
         </div>
         <div className="flex gap-3">
@@ -826,7 +860,7 @@ const DashboardScreen = ({
     <div className="max-w-xl mx-auto min-h-screen p-6 animate-fade-in-up pb-20 transition-colors duration-300" style={bgStyle}>
       <div className="flex justify-between items-center mb-8 pt-2">
         <div className="flex items-center gap-3">
-          {settings.logoUrl ? (
+          {(settings.logoUrl && settings.isPro) ? (
             <img src={settings.logoUrl} alt="Logo" className={`w-12 h-12 object-contain rounded-lg p-1 shadow-sm border ${isDark ? 'bg-slate-800 border-slate-600' : 'bg-white border-gray-100'}`} />
           ) : (
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-xl ${isDark ? 'bg-slate-800 text-white' : 'bg-white text-gray-900'}`}>{settings.shopName.substring(0,1)}</div>
@@ -1279,8 +1313,25 @@ const WorkshopScreen = ({
         </section>
       </div>
 
-      {isAddingAction && <AddActionModal onClose={() => setIsAddingAction(false)} onSave={handleSaveNewAction} isOnline={isOnline} themeColor={themeColor} isDark={isDark} />}
-      {previewPhotoUrl && <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 animate-fade-in-up" onClick={() => setPreviewPhotoUrl(null)}><button className="absolute top-4 right-4 text-white p-2 bg-white/20 rounded-full hover:bg-white/40"><X size={32}/></button><img src={previewPhotoUrl} className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} /></div>}
+      {isAddingAction && (
+        <AddActionModal 
+          onClose={() => setIsAddingAction(false)} 
+          onSave={handleSaveNewAction} 
+          isOnline={isOnline} 
+          themeColor={themeColor} 
+          isDark={isDark}
+          isPro={settings.isPro}
+          onShowSales={onShowSales}
+        />
+      )}
+
+      {/* Lightbox Modal */}
+      {previewPhotoUrl && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 animate-fade-in-up" onClick={() => setPreviewPhotoUrl(null)}>
+          <button className="absolute top-4 right-4 text-white p-2 bg-white/20 rounded-full hover:bg-white/40"><X size={32}/></button>
+          <img src={previewPhotoUrl} className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 };
@@ -1343,7 +1394,6 @@ const App = () => {
   };
 
   const handleAddClient = (data: any) => {
-    // FREEMIUM CHECK:
     const activeCount = clients.filter(c => c.status === 'ACTIVE').length;
     if (!settings?.isPro && activeCount >= 5) {
       setShowSalesModal('LIMIT');
@@ -1399,7 +1449,6 @@ const App = () => {
     const fileName = `szerviz_mentes_${new Date().toISOString().slice(0,10)}.json`;
     const file = new File([dataStr], fileName, { type: 'application/json' });
 
-    // Try Web Share API first (Mobile)
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({
@@ -1407,7 +1456,6 @@ const App = () => {
           title: 'Biztonsági Mentés',
           text: 'Mentsd le a biztonsági mentést!'
         });
-        // If successful sharing/saving
         if (settings) {
           setSettings({...settings, clientCountSinceBackup: 0});
           setShowBackupReminder(false);
@@ -1418,7 +1466,6 @@ const App = () => {
       }
     }
 
-    // Fallback to classic download (Desktop)
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", "data:text/json;charset=utf-8," + encodeURIComponent(dataStr));
     downloadAnchorNode.setAttribute("download", fileName);
