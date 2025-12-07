@@ -39,7 +39,11 @@ import {
   Moon,
   Sun,
   Grid,
-  Save
+  Save,
+  Lock,
+  Crown,
+  Key,
+  Star
 } from 'lucide-react';
 
 // --- 1. TYPES & INTERFACES (Defined first) ---
@@ -89,7 +93,8 @@ interface ShopSettings {
   logoUrl?: string;
   darkMode: boolean;
   texture: TextureType;
-  clientCountSinceBackup: number; // NEW: Track clients for backup reminder
+  clientCountSinceBackup: number;
+  isPro: boolean; 
 }
 
 type ViewState = 'ONBOARDING' | 'DASHBOARD' | 'INTAKE' | 'WORKSHOP';
@@ -98,6 +103,7 @@ type ViewState = 'ONBOARDING' | 'DASHBOARD' | 'INTAKE' | 'WORKSHOP';
 
 const CLOUDINARY_CLOUD_NAME = 'dagkl5gci';
 const CLOUDINARY_UPLOAD_PRESET = 'Autószervíz';
+const PRO_LICENSE_KEY = 'AUTO-PRO-2024'; 
 
 const THEMES: Record<string, ThemeConfig> = {
   orange: { name: 'GumiAbroncs Narancs', bg: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-200', light: 'bg-orange-50', hover: 'hover:bg-orange-600', ring: 'focus:ring-orange-500', shadow: 'shadow-orange-200' },
@@ -124,7 +130,7 @@ const getTextureStyle = (type: TextureType, isDark: boolean) => {
       backgroundColor: isDark ? '#171717' : '#ffffff'
     };
   }
-  return { backgroundColor: isDark ? '#0f172a' : '#f8fafc' }; // Default bg
+  return { backgroundColor: isDark ? '#0f172a' : '#f8fafc' }; 
 };
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -252,6 +258,65 @@ const parseCost = (value: string) => parseInt(value.replace(/\D/g, '')) || 0;
 
 // --- 4. SUB-COMPONENTS (Defined BEFORE App) ---
 
+// Feature Gate Modal (New for Sales)
+const FeatureGateModal = ({ 
+  feature, onClose, onActivate 
+}: { 
+  feature: 'LOGO' | 'AI' | 'LIMIT', onClose: () => void, onActivate: () => void 
+}) => {
+  const content = {
+    LOGO: {
+      title: "Tedd profibbá a megjelenésed!",
+      text: "Töltsd fel a logódat, hogy az app a Te céged arculatát tükrözze a mindennapi munka során. Az egyedi arculat bizalmat épít.",
+      icon: <Palette size={48} className="text-purple-500" />
+    },
+    AI: {
+      title: "Írj úgy, mint egy profi!",
+      text: "Spórolj időt! Az AI segít a nyers jegyzeteidet (pl. 'rossz a fék') udvarias, bizalomgerjesztő kommunikációvá alakítani egy gombnyomással.",
+      icon: <Sparkles size={48} className="text-indigo-500" />
+    },
+    LIMIT: {
+      title: "Kinőtted az ingyenes keretet?",
+      text: "Ez jó hír, pörög az üzlet! Az ingyenes verzióban 5 autót kezelhetsz. Válts PRO-ra a korlátlan munkalapokhoz!",
+      icon: <Car size={48} className="text-emerald-500" />
+    }
+  }[feature];
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-6 animate-fade-in-up backdrop-blur-sm">
+      <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border-2 border-white/20 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-500"></div>
+        
+        <div className="flex justify-center mb-6">
+          <div className="bg-gray-50 p-4 rounded-full shadow-inner">
+            {content.icon}
+          </div>
+        </div>
+        
+        <h3 className="text-2xl font-bold text-gray-900 mb-3 text-center leading-tight">{content.title}</h3>
+        <p className="text-sm text-gray-500 mb-8 text-center leading-relaxed font-medium">
+          {content.text}
+        </p>
+        
+        <div className="flex flex-col gap-3">
+          <button 
+            onClick={onActivate} 
+            className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-lg shadow-xl shadow-indigo-200 transform transition active:scale-95 flex items-center justify-center gap-2"
+          >
+            <Crown size={20} fill="currentColor" /> Váltás PRO-ra
+          </button>
+          <button 
+            onClick={onClose} 
+            className="w-full py-3 text-gray-400 font-bold text-sm hover:text-gray-600"
+          >
+            Köszönöm, maradok az alap verziónál
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const BackupReminderModal = ({ onClose, onExport, theme }: { onClose: () => void, onExport: () => void, theme: ThemeConfig }) => {
   return (
     <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-6 animate-fade-in-up">
@@ -307,11 +372,13 @@ const StartRepairModal = ({
         </div>
         <h3 className={`text-xl font-bold mb-2 text-center ${isDark ? 'text-white' : 'text-gray-900'}`}>Javítás Megkezdése</h3>
         <p className={`text-sm mb-4 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          Értesítsd az ügyfelet, hogy nekiláttál az autónak!
+          Az alábbi SMS-t küldjük az ügyfélnek:
         </p>
+        
         <div className={`${isDark ? 'bg-slate-900 border-slate-700 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-800'} p-4 rounded-xl border mb-6 relative`}>
           <p className="text-sm font-medium italic">"{smsText}"</p>
         </div>
+
         <div className="flex gap-3">
           <button onClick={onClose} className={`flex-1 py-3 rounded-xl font-bold ${isDark ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Mégse</button>
           <button onClick={handleSend} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2">
@@ -324,7 +391,7 @@ const StartRepairModal = ({
 };
 
 const SettingsModal = ({ 
-  onClose, theme, onExport, onImport, quickActions, setQuickActions, isOnline, settings, onUpdateSettings
+  onClose, theme, onExport, onImport, quickActions, setQuickActions, isOnline, settings, onUpdateSettings, onShowSales
 }: { 
   onClose: () => void, 
   onExport: () => void,
@@ -333,13 +400,19 @@ const SettingsModal = ({
   setQuickActions: (a: string[]) => void,
   isOnline: boolean,
   settings: ShopSettings,
-  onUpdateSettings: (s: ShopSettings) => void
+  onUpdateSettings: (s: ShopSettings) => void,
+  onShowSales: (feat: 'LOGO' | 'AI' | 'LIMIT') => void
 }) => {
   const [newAction, setNewAction] = useState('');
   const [isImproving, setIsImproving] = useState(false);
+  const [licenseKey, setLicenseKey] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const isDark = settings.darkMode;
+
+  const handleDeleteAction = (index: number) => {
+    setQuickActions(quickActions.filter((_, i) => i !== index));
+  };
 
   const handleImproveAction = async () => {
     if (!newAction.trim() || !isOnline) return;
@@ -356,6 +429,16 @@ const SettingsModal = ({
     }
   };
 
+  const handleActivatePro = () => {
+    if (licenseKey.trim() === PRO_LICENSE_KEY) {
+      onUpdateSettings({...settings, isPro: true});
+      alert("Sikeres aktiválás! Üdv a PRO klubban! 🚀");
+      setLicenseKey('');
+    } else {
+      alert("Érvénytelen licenckulcs. Kérjük ellenőrizd!");
+    }
+  };
+
   const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -369,7 +452,7 @@ const SettingsModal = ({
           } else {
             onImport(json, false);
           }
-          alert("Adatok visszatöltve!");
+          alert("Sikeres visszatöltés! A Dashboard frissült.");
         } else {
           alert("Hibás fájlformátum!");
         }
@@ -382,6 +465,10 @@ const SettingsModal = ({
   };
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!settings.isPro) {
+      onShowSales('LOGO');
+      return;
+    }
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -399,14 +486,52 @@ const SettingsModal = ({
           <h3 className={`text-xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>Beállítások</h3>
           <button onClick={onClose} className={isDark ? 'text-gray-400' : 'text-gray-500'}><X size={24}/></button>
         </div>
+        
         <div className="p-6 overflow-y-auto dark-scroll">
+          
+          {/* PRO SECTION */}
+          <div className={`mb-8 p-4 rounded-2xl border-2 ${settings.isPro ? (isDark ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-emerald-100 bg-emerald-50') : (isDark ? 'border-indigo-500/30 bg-indigo-500/10' : 'border-indigo-100 bg-indigo-50')}`}>
+             <div className="flex items-center gap-3 mb-2">
+               {settings.isPro ? <Crown size={24} className="text-emerald-500" /> : <Lock size={24} className="text-indigo-500" />}
+               <h4 className={`text-lg font-bold ${settings.isPro ? 'text-emerald-600' : 'text-indigo-600'}`}>
+                 {settings.isPro ? 'PRO Csomag Aktív' : 'Válts PRO-ra!'}
+               </h4>
+             </div>
+             
+             {!settings.isPro ? (
+               <div>
+                 <p className={`text-xs mb-3 leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                   Korlátlan autó, saját logó és AI funkciók. Csak havi 4.990 Ft.
+                 </p>
+                 <div className="flex gap-2">
+                   <input 
+                     type="text" 
+                     placeholder="Licenckulcs..."
+                     value={licenseKey}
+                     onChange={(e) => setLicenseKey(e.target.value)}
+                     className={`flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-200'}`}
+                   />
+                   <button 
+                     onClick={handleActivatePro}
+                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md active:scale-95"
+                   >
+                     Aktiválás
+                   </button>
+                 </div>
+               </div>
+             ) : (
+                <p className="text-xs text-emerald-600 font-medium">Köszönjük, hogy profi vagy!</p>
+             )}
+          </div>
+
           <div className="mb-8">
              <h4 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 <Palette size={14}/> Arculat & Design
              </h4>
+             
              <div className="flex items-center gap-4 mb-4">
                 <div 
-                  className={`w-16 h-16 rounded-xl border-2 border-dashed flex items-center justify-center overflow-hidden cursor-pointer relative group ${isDark ? 'border-slate-600 bg-slate-700' : 'border-gray-300 bg-gray-50'}`}
+                  className={`w-16 h-16 rounded-xl border-2 border-dashed flex items-center justify-center overflow-hidden cursor-pointer relative group ${isDark ? 'border-slate-600 bg-slate-700' : 'border-gray-300 bg-gray-50'} ${!settings.isPro ? 'opacity-50' : ''}`}
                   onClick={() => logoInputRef.current?.click()}
                 >
                   {settings.logoUrl ? (
@@ -414,13 +539,22 @@ const SettingsModal = ({
                   ) : (
                     <Upload size={20} className={isDark ? 'text-slate-400' : 'text-gray-400'}/>
                   )}
+                  {!settings.isPro && (
+                    <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
+                      <Lock size={16} className="text-gray-500" />
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1">
-                   <p className={`text-sm font-bold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>Szerviz Logó</p>
+                   <div className="flex items-center gap-2">
+                     <p className={`text-sm font-bold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>Szerviz Logó</p>
+                     {!settings.isPro && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-bold">PRO</span>}
+                   </div>
                    <button onClick={() => logoInputRef.current?.click()} className={`text-xs font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>Kép feltöltése</button>
                    <input type="file" accept="image/*" ref={logoInputRef} className="hidden" onChange={handleLogoUpload} />
                 </div>
              </div>
+
              <div className="flex items-center gap-4 mb-4">
                 <input 
                   type="color" 
@@ -433,6 +567,7 @@ const SettingsModal = ({
                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Válaszd ki a márkaszíned</p>
                 </div>
              </div>
+
              <div className={`flex items-center justify-between p-3 rounded-xl border mb-4 ${isDark ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
                 <div className="flex items-center gap-2">
                    {settings.darkMode ? <Moon size={18} className="text-blue-400"/> : <Sun size={18} className="text-orange-500"/>}
@@ -445,6 +580,7 @@ const SettingsModal = ({
                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${settings.darkMode ? 'left-7' : 'left-1'}`}></div>
                 </button>
              </div>
+
              <div>
                 <p className={`text-xs font-bold mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Háttér Textúra</p>
                 <div className="flex gap-2">
@@ -464,11 +600,14 @@ const SettingsModal = ({
                 </div>
              </div>
           </div>
+
           <div className={`border-t my-6 ${isDark ? 'border-slate-700' : 'border-gray-100'}`}></div>
+
           <div className="mb-8">
             <h4 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               <Edit3 size={14}/> Gyors Sablonok
             </h4>
+            
             <div className="flex gap-2 mb-4">
               <input 
                 type="text" 
@@ -479,10 +618,10 @@ const SettingsModal = ({
               />
               <button 
                 onClick={handleImproveAction}
-                disabled={!isOnline || !newAction || isImproving}
-                className={`p-3 rounded-xl transition-all ${isOnline && newAction ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200' : (isDark ? 'bg-slate-700 text-slate-500' : 'bg-gray-100 text-gray-400')}`}
+                disabled={!isOnline || !newAction || isImproving || !settings.isPro}
+                className={`p-3 rounded-xl transition-all ${isOnline && newAction && settings.isPro ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200' : (isDark ? 'bg-slate-700 text-slate-500' : 'bg-gray-100 text-gray-400')}`}
               >
-                {isImproving ? <Loader2 size={20} className="animate-spin"/> : <Sparkles size={20} />}
+                {settings.isPro ? (isImproving ? <Loader2 size={20} className="animate-spin"/> : <Sparkles size={20} />) : <Lock size={20} />}
               </button>
               <button 
                 onClick={handleAddAction}
@@ -493,18 +632,21 @@ const SettingsModal = ({
                 <Plus size={20} />
               </button>
             </div>
+
             <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
               {quickActions.map((action, idx) => (
                 <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border ${isDark ? 'bg-slate-700 border-slate-600' : 'bg-gray-50 border-gray-100'}`}>
                   <span className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{action}</span>
-                  <button onClick={() => setQuickActions(quickActions.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500 p-1">
+                  <button onClick={() => handleDeleteAction(idx)} className="text-gray-400 hover:text-red-500 p-1">
                     <Trash2 size={16} />
                   </button>
                 </div>
               ))}
             </div>
           </div>
+
           <div className={`border-t my-6 ${isDark ? 'border-slate-700' : 'border-gray-100'}`}></div>
+
           <div>
               <h4 className={`text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 <ShieldCheck size={14}/> Adatok Kezelése
@@ -528,7 +670,9 @@ const SettingsModal = ({
                 A "Mentés" letölt egy fájlt. A "Visszatöltés"-sel visszaállíthatod a régi adatokat.
               </p>
           </div>
+
           <div className={`border-t my-6 ${isDark ? 'border-slate-700' : 'border-gray-100'}`}></div>
+
           <button 
             onClick={() => {
               if(confirm("Minden adat törlődik! Biztos?")) {
@@ -603,12 +747,7 @@ const OnboardingScreen = ({ onComplete }: { onComplete: (s: ShopSettings) => voi
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setLogoUrl(reader.result as string);
-      reader.readAsDataURL(file);
-    }
+    alert("A logó feltöltése PRO funkció. Később a beállításokban aktiválhatod!");
   };
 
   return (
@@ -620,13 +759,16 @@ const OnboardingScreen = ({ onComplete }: { onComplete: (s: ShopSettings) => voi
       <div className="space-y-8">
         <div className="flex flex-col items-center">
              <div 
-               className="w-28 h-28 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50 cursor-pointer relative group transition-all hover:border-gray-400"
+               className="w-28 h-28 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50 cursor-pointer relative group transition-all hover:border-gray-400 opacity-60"
                onClick={() => logoInputRef.current?.click()}
              >
-               {logoUrl ? <img src={logoUrl} className="w-full h-full object-contain" /> : <div className="text-center text-gray-400"><Upload size={28} className="mx-auto mb-2"/><span className="text-[10px] font-bold uppercase tracking-wider">Logó</span></div>}
+               <div className="text-center text-gray-400">
+                   <Lock size={28} className="mx-auto mb-2"/>
+                   <span className="text-[10px] font-bold uppercase tracking-wider">Logó (PRO)</span>
+               </div>
              </div>
              <input type="file" accept="image/*" ref={logoInputRef} className="hidden" onChange={handleLogoUpload} />
-             <p className="text-xs text-gray-400 mt-2 font-medium">Opcionális: Töltsd fel a céges logót</p>
+             <p className="text-xs text-gray-400 mt-2 font-medium">Logó feltöltése: Csak PRO csomagban</p>
         </div>
         <div>
           <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 text-center">Szerviz Neve</label>
@@ -645,7 +787,7 @@ const OnboardingScreen = ({ onComplete }: { onComplete: (s: ShopSettings) => voi
           </div>
         </div>
         <button 
-          onClick={() => name && onComplete({ shopName: name, themeColor: color, logoUrl, darkMode: false, texture: 'none', clientCountSinceBackup: 0 })} 
+          onClick={() => name && onComplete({ shopName: name, themeColor: color, logoUrl, darkMode: false, texture: 'none', clientCountSinceBackup: 0, isPro: false })} 
           disabled={!name} 
           style={{ backgroundColor: name ? color : '#d1d5db' }}
           className={`w-full py-4 rounded-xl font-bold text-white shadow-xl mt-4 transition-all`}
@@ -690,7 +832,10 @@ const DashboardScreen = ({
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-xl ${isDark ? 'bg-slate-800 text-white' : 'bg-white text-gray-900'}`}>{settings.shopName.substring(0,1)}</div>
           )}
           <div>
-            <h1 className={`text-2xl font-bold tracking-tight leading-none ${isDark ? 'text-white' : 'text-gray-900'}`}>{settings.shopName}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-2xl font-bold tracking-tight leading-none ${isDark ? 'text-white' : 'text-gray-900'}`}>{settings.shopName}</h1>
+              {settings.isPro && <span className="bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">PRO</span>}
+            </div>
             <div className={`flex items-center gap-2 text-sm mt-1.5 font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               <CheckCircle size={14} className="text-emerald-500"/> 
               <span>Heti kész: <b>{weeklyFinished} db</b></span>
@@ -753,6 +898,7 @@ const DashboardScreen = ({
                   <p className={`text-sm font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{client.name}</p>
                 </div>
               </div>
+              
               {client.status === 'ACTIVE' && (
                 <button 
                   onClick={(e) => onStart(client, e)}
@@ -762,9 +908,11 @@ const DashboardScreen = ({
                   <Wrench size={16} /> <span className="text-[10px] font-bold">MEGKEZDÉS</span>
                 </button>
               )}
+
               <button onClick={(e) => onDelete(client.id, e)} className={`absolute top-4 right-2 p-2 rounded-lg transition-colors z-20 active:scale-95 ${isDark ? 'text-gray-500 hover:text-red-400 hover:bg-slate-700' : 'text-gray-300 hover:text-red-500 hover:bg-red-50'}`}>
                 <Trash2 size={18} className="pointer-events-none" />
               </button>
+
               {client.status === 'FINISHED' && (
                 <div className="absolute bottom-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-tl-xl pointer-events-none flex items-center gap-1">
                   <CheckCircle size={10} /> KÉSZ
@@ -830,9 +978,9 @@ const IntakeScreen = ({ onSave, onCancel, themeColor, isDark }: { onSave: (data:
 };
 
 const WorkshopScreen = ({ 
-  client, isOnline, onBack, onUpdateClient, quickActions, setQuickActions, themeColor, shopName, isDark
+  client, isOnline, onBack, onUpdateClient, quickActions, setQuickActions, themeColor, shopName, isDark, settings, onShowSales
 }: { 
-  client: ClientData, isOnline: boolean, onBack: () => void, onUpdateClient: (c: ClientData) => void, quickActions: string[], setQuickActions: any, themeColor: string, shopName: string, isDark: boolean
+  client: ClientData, isOnline: boolean, onBack: () => void, onUpdateClient: (c: ClientData) => void, quickActions: string[], setQuickActions: any, themeColor: string, shopName: string, isDark: boolean, settings: ShopSettings, onShowSales: (feat: 'LOGO' | 'AI' | 'LIMIT') => void
 }) => {
   const [diagnosis, setDiagnosis] = useState('');
   const [useBreakdown, setUseBreakdown] = useState(client.useBreakdown || false);
@@ -899,6 +1047,10 @@ const WorkshopScreen = ({
   };
 
   const handleBeautify = async () => {
+    if (!settings.isPro) {
+      onShowSales('AI');
+      return;
+    }
     if (!diagnosis || !isOnline) return;
     setIsBeautifying(true);
     const improvedText = await beautifyDiagnosisText(diagnosis);
@@ -1053,12 +1205,21 @@ const WorkshopScreen = ({
                     </button>
                 )}
 
-                <button onClick={handleBeautify} disabled={!isOnline || !diagnosis || isBeautifying} className={`absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${isOnline && diagnosis ? 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50 active:scale-95' : (isDark ? 'bg-slate-700 text-gray-500 border-slate-600 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200')}`}>
-                  {isBeautifying ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14} />}
-                  {isOnline ? 'AI Szépítés' : 'Offline'}
+                <button 
+                  onClick={handleBeautify}
+                  disabled={!isOnline || !diagnosis || isBeautifying}
+                  className={`absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm
+                    ${isOnline && diagnosis && settings.isPro
+                      ? 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50 active:scale-95' 
+                      : (isDark ? 'bg-slate-700 text-gray-500 border-slate-600 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200')}
+                  `}
+                >
+                  {!settings.isPro ? <Lock size={14}/> : (isBeautifying ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14} />)}
+                  {settings.isPro ? (isOnline ? 'AI Szépítés' : 'Offline') : 'AI (PRO)'}
                 </button>
              </div>
 
+             {/* PRICING SECTION */}
              <div className={`p-5 rounded-2xl border shadow-sm ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
                 <button onClick={() => setUseBreakdown(!useBreakdown)} className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 hover:text-gray-400 transition-colors">
                     {useBreakdown ? <ToggleRight size={24} style={{color: themeColor}}/> : <ToggleLeft size={24}/>}
@@ -1148,7 +1309,8 @@ const App = () => {
   const [clientToStart, setClientToStart] = useState<ClientData | null>(null); 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showBackupReminder, setShowBackupReminder] = useState(false); // NEW
+  const [showBackupReminder, setShowBackupReminder] = useState(false);
+  const [showSalesModal, setShowSalesModal] = useState<'LOGO' | 'AI' | 'LIMIT' | null>(null);
 
   useEffect(() => {
     if (settings) localStorage.setItem('auto_settings', JSON.stringify(settings));
@@ -1181,6 +1343,13 @@ const App = () => {
   };
 
   const handleAddClient = (data: any) => {
+    // FREEMIUM CHECK:
+    const activeCount = clients.filter(c => c.status === 'ACTIVE').length;
+    if (!settings?.isPro && activeCount >= 5) {
+      setShowSalesModal('LIMIT');
+      return;
+    }
+
     const newClient: ClientData = {
       id: Date.now().toString(),
       ...data,
@@ -1191,7 +1360,6 @@ const App = () => {
     setClients([newClient, ...clients]);
     setCurrentView('DASHBOARD');
     
-    // BACKUP LOGIC: Increment count and check
     if (settings) {
       const newCount = (settings.clientCountSinceBackup || 0) + 1;
       setSettings({...settings, clientCountSinceBackup: newCount});
@@ -1226,16 +1394,38 @@ const App = () => {
     setClients(clients.map(c => c.id === updatedClient.id ? updatedClient : c));
   };
 
-  const handleExportData = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(clients));
+  const handleExportData = async () => {
+    const dataStr = JSON.stringify(clients);
+    const fileName = `szerviz_mentes_${new Date().toISOString().slice(0,10)}.json`;
+    const file = new File([dataStr], fileName, { type: 'application/json' });
+
+    // Try Web Share API first (Mobile)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'Biztonsági Mentés',
+          text: 'Mentsd le a biztonsági mentést!'
+        });
+        // If successful sharing/saving
+        if (settings) {
+          setSettings({...settings, clientCountSinceBackup: 0});
+          setShowBackupReminder(false);
+        }
+        return;
+      } catch (err) {
+        console.log('Sharing failed or cancelled, falling back to download');
+      }
+    }
+
+    // Fallback to classic download (Desktop)
     const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `szerviz_mentes_${new Date().toISOString().slice(0,10)}.json`);
+    downloadAnchorNode.setAttribute("href", "data:text/json;charset=utf-8," + encodeURIComponent(dataStr));
+    downloadAnchorNode.setAttribute("download", fileName);
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
     
-    // Reset backup counter
     if (settings) {
       setSettings({...settings, clientCountSinceBackup: 0});
       setShowBackupReminder(false);
@@ -1280,7 +1470,20 @@ const App = () => {
       {currentView === 'INTAKE' && settings && <IntakeScreen themeColor={settings.themeColor} isDark={settings.darkMode} theme={theme} onSave={handleAddClient} onCancel={() => setCurrentView('DASHBOARD')} />}
 
       {currentView === 'WORKSHOP' && activeClient && theme && settings && (
-        <WorkshopScreen client={activeClient} themeColor={settings.themeColor} isDark={settings.darkMode} theme={theme} isOnline={isOnline} onUpdateClient={handleUpdateClient} onBack={() => { setSelectedClientId(null); setCurrentView('DASHBOARD'); }} quickActions={quickActions} setQuickActions={setQuickActions} shopName={settings.shopName} />
+        <WorkshopScreen 
+          client={activeClient} 
+          themeColor={settings.themeColor} 
+          isDark={settings.darkMode} 
+          theme={theme} 
+          isOnline={isOnline} 
+          onUpdateClient={handleUpdateClient} 
+          onBack={() => { setSelectedClientId(null); setCurrentView('DASHBOARD'); }} 
+          quickActions={quickActions} 
+          setQuickActions={setQuickActions} 
+          shopName={settings.shopName} 
+          settings={settings}
+          onShowSales={setShowSalesModal}
+        />
       )}
 
       {clientToStart && settings && <StartRepairModal client={clientToStart} shopName={settings.shopName} onClose={() => setClientToStart(null)} isDark={settings.darkMode} />}
@@ -1299,7 +1502,27 @@ const App = () => {
       )}
 
       {showSettingsModal && theme && settings && (
-        <SettingsModal onClose={() => setShowSettingsModal(false)} theme={theme} onExport={handleExportData} onImport={handleImportData} quickActions={quickActions} setQuickActions={setQuickActions} isOnline={isOnline} settings={settings} onUpdateSettings={setSettings} />
+        <SettingsModal 
+          onClose={() => setShowSettingsModal(false)} 
+          theme={theme} 
+          onExport={handleExportData} 
+          onImport={handleImportData} 
+          quickActions={quickActions} 
+          setQuickActions={setQuickActions} 
+          isOnline={isOnline} 
+          settings={settings} 
+          onUpdateSettings={setSettings} 
+          onShowSales={setShowSalesModal}
+        />
+      )}
+
+      {/* SALES MODAL */}
+      {showSalesModal && settings && (
+        <FeatureGateModal 
+          feature={showSalesModal} 
+          onClose={() => setShowSalesModal(null)} 
+          onActivate={() => { setShowSalesModal(null); setShowSettingsModal(true); }}
+        />
       )}
 
       {/* BACKUP REMINDER MODAL */}
