@@ -11,15 +11,21 @@
   <!-- Fontok -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
   
   <style>
-    /* Alapbeállítások */
+    /* Alapbeállítások - Technikai Font */
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: 'Rajdhani', sans-serif;
+      background-color: #f8fafc;
     }
     
-    /* Animációk definíciója, amit az index.tsx használ */
+    /* Input mezőknél maradjon az olvashatóbb Inter */
+    input, textarea {
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Animációk */
     @keyframes fadeInUp {
       from {
         opacity: 0;
@@ -32,22 +38,19 @@
     }
     
     .animate-fade-in-up {
-      animation: fadeInUp 0.5s ease-out forwards;
+      animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
     
-    /* Scrollbar finomítás a sötét módhoz */
+    /* Scrollbar finomítás */
     .dark-scroll::-webkit-scrollbar {
-      width: 8px;
+      width: 6px;
     }
     .dark-scroll::-webkit-scrollbar-track {
-      background: #0f172a; 
+      background: #f1f5f9; 
     }
     .dark-scroll::-webkit-scrollbar-thumb {
-      background: #334155; 
+      background: #cbd5e1; 
       border-radius: 4px;
-    }
-    .dark-scroll::-webkit-scrollbar-thumb:hover {
-      background: #475569; 
     }
   </style>
 
@@ -65,10 +68,7 @@
   </script>
 </head>
 <body>
-  <!-- A React alkalmazás gyökere -->
   <div id="root"></div>
-  
-  <!-- Belépési pont -->
   <script type="module" src="index.tsx"></script>
 </body>
 </html>
