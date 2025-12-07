@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, CheckCircle, Camera, Check, Loader2, Maximize2, Mic, Sparkles, Lock, ToggleRight, ToggleLeft, Lightbulb, Coins, Send, Plus

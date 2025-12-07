@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  X, Download, Palette, Sparkles, Car, Crown, AlertTriangle, Send, Wrench, MessageSquare, Upload, RefreshCw, Moon, Sun, Edit3, Trash2, Lock, Plus, ShieldCheck
+  X, Download, Palette, Sparkles, Car, Crown, AlertTriangle, Send, Wrench, MessageSquare, Upload, RefreshCw, Moon, Sun, Edit3, Trash2, Lock
 } from 'lucide-react';
 import { ThemeConfig, ClientData, ShopSettings } from '../types';
 import { improveTemplateText, generateStaticSms } from '../aiService';
@@ -41,15 +40,18 @@ export const FeatureGateModal = ({
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-6 animate-fade-in-up backdrop-blur-sm">
       <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border-2 border-white/20 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-500"></div>
+        
         <div className="flex justify-center mb-6">
           <div className="bg-gray-50 p-4 rounded-full shadow-inner">
             {content.icon}
           </div>
         </div>
+        
         <h3 className="text-2xl font-bold text-gray-900 mb-3 text-center leading-tight">{content.title}</h3>
         <p className="text-sm text-gray-500 mb-8 text-center leading-relaxed font-medium">
           {content.text}
         </p>
+        
         <div className="flex flex-col gap-3">
           <button 
             onClick={onActivate} 
@@ -476,7 +478,7 @@ export const SettingsModal = ({
   );
 };
 
-export const AddActionModal = ({ 
+const AddActionModal = ({ 
   onClose, onSave, isOnline, themeColor, isDark, isPro, onShowSales
 }: { 
   onClose: () => void, onSave: (text: string) => void, isOnline: boolean, themeColor: string, isDark: boolean, isPro: boolean, onShowSales: (f: 'AI') => void

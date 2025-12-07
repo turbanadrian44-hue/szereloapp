@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ClientData, ShopSettings, ViewState } from './types';
 import { THEMES } from './config';

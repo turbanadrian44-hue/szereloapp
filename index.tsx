@@ -263,7 +263,6 @@ const FeatureGateModal = ({
 }: { 
   feature: 'LOGO' | 'AI' | 'LIMIT', onClose: () => void, onActivate: () => void 
 }) => {
-  
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = 'unset'; };
@@ -291,18 +290,15 @@ const FeatureGateModal = ({
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-6 animate-fade-in-up backdrop-blur-sm">
       <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border-2 border-white/20 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-500"></div>
-        
         <div className="flex justify-center mb-6">
           <div className="bg-gray-50 p-4 rounded-full shadow-inner">
             {content.icon}
           </div>
         </div>
-        
         <h3 className="text-2xl font-bold text-gray-900 mb-3 text-center leading-tight">{content.title}</h3>
         <p className="text-sm text-gray-500 mb-8 text-center leading-relaxed font-medium">
           {content.text}
         </p>
-        
         <div className="flex flex-col gap-3">
           <button 
             onClick={onActivate} 
@@ -406,9 +402,10 @@ const StartRepairModal = ({
 };
 
 const SettingsModal = ({ 
-  onClose, onExport, onImport, quickActions, setQuickActions, isOnline, settings, onUpdateSettings, onShowSales
+  onClose, theme, onExport, onImport, quickActions, setQuickActions, isOnline, settings, onUpdateSettings, onShowSales
 }: { 
   onClose: () => void, 
+  theme: ThemeConfig,
   onExport: () => void,
   onImport: (data: ClientData[], merge: boolean) => void,
   quickActions: string[],
@@ -488,15 +485,11 @@ const SettingsModal = ({
     if(importInputRef.current) importInputRef.current.value = '';
   };
 
-  const handleLogoClick = () => {
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!settings.isPro) {
       onShowSales('LOGO');
       return;
     }
-    logoInputRef.current?.click();
-  };
-
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -506,6 +499,14 @@ const SettingsModal = ({
       reader.readAsDataURL(file);
     }
   };
+
+  const triggerLogoUpload = () => {
+    if (!settings.isPro) {
+        onShowSales('LOGO');
+        return;
+    }
+    logoInputRef.current?.click();
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in-up">
@@ -566,7 +567,7 @@ const SettingsModal = ({
              <div className="flex items-center gap-4 mb-4">
                 <div 
                   className={`w-16 h-16 rounded-xl border-2 border-dashed flex items-center justify-center overflow-hidden cursor-pointer relative group ${isDark ? 'border-slate-600 bg-slate-700' : 'border-gray-300 bg-gray-50'} ${!settings.isPro ? 'opacity-50' : ''}`}
-                  onClick={handleLogoClick}
+                  onClick={triggerLogoUpload}
                 >
                   {(settings.logoUrl && settings.isPro) ? (
                     <img src={settings.logoUrl} className="w-full h-full object-contain" />
@@ -584,7 +585,7 @@ const SettingsModal = ({
                      <p className={`text-sm font-bold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>Szerviz Logó</p>
                      {!settings.isPro && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-bold">PRO</span>}
                    </div>
-                   <button onClick={handleLogoClick} className={`text-xs font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>Kép feltöltése</button>
+                   <button onClick={triggerLogoUpload} className={`text-xs font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>Kép feltöltése</button>
                    <input type="file" accept="image/*" ref={logoInputRef} className="hidden" onChange={handleLogoUpload} />
                 </div>
              </div>
@@ -618,7 +619,7 @@ const SettingsModal = ({
              <div>
                 <p className={`text-xs font-bold mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Háttér Textúra</p>
                 <div className="flex gap-2">
-                   {(['none', 'carbon', 'metal'] as TextureType[]).map(t => (
+                   {(['none', 'carbon', 'metal'] as import('../types').TextureType[]).map(t => (
                      <button
                        key={t}
                        onClick={() => onUpdateSettings({...settings, texture: t})}
@@ -790,11 +791,13 @@ const OnboardingScreen = ({ onComplete, onShowSales }: { onComplete: (s: ShopSet
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogoClick = () => {
+      // New users are not Pro yet, so we show the sales modal immediately
       onShowSales('LOGO');
   }
 
-  // Not used in onboarding free tier, but kept for type safety
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {};
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+     // This won't be reached if triggerLogoUpload works correctly, but safe to keep
+  };
 
   return (
     <div className="min-h-screen bg-white p-8 flex flex-col justify-center max-w-md mx-auto animate-fade-in-up">
@@ -846,9 +849,9 @@ const OnboardingScreen = ({ onComplete, onShowSales }: { onComplete: (s: ShopSet
 };
 
 const DashboardScreen = ({ 
-  clients, onAdd, onOpen, onDelete, onStart, onOpenSettings, settings 
+  clients, onAdd, onOpen, onDelete, onStart, onOpenSettings, settings, theme 
 }: { 
-  clients: ClientData[], onAdd: () => void, onOpen: (id: string) => void, onDelete: any, onStart: (client: ClientData, e: React.MouseEvent) => void, onOpenSettings: any, settings: ShopSettings
+  clients: ClientData[], onAdd: () => void, onOpen: (id: string) => void, onDelete: any, onStart: (client: ClientData, e: React.MouseEvent) => void, onOpenSettings: any, settings: ShopSettings, theme: ThemeConfig
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const isDark = settings.darkMode;
@@ -973,7 +976,6 @@ const DashboardScreen = ({
   );
 };
 
-// --- Screen: Intake ---
 const IntakeScreen = ({ onSave, onCancel, themeColor, isDark }: { onSave: (data: any) => void, onCancel: () => void, themeColor: string, isDark: boolean }) => {
   const [formData, setFormData] = useState({ name: '', licensePlate: '', phone: '+36 ', isUrgent: false, gdprAccepted: false });
   const isValid = formData.name && formData.licensePlate.length >= 3 && formData.phone.length > 7 && formData.gdprAccepted;
@@ -1025,40 +1027,31 @@ const IntakeScreen = ({ onSave, onCancel, themeColor, isDark }: { onSave: (data:
   );
 };
 
-// --- Screen: Workshop ---
 const WorkshopScreen = ({ 
   client, isOnline, onBack, onUpdateClient, quickActions, setQuickActions, themeColor, shopName, isDark, settings, onShowSales
 }: { 
   client: ClientData, isOnline: boolean, onBack: () => void, onUpdateClient: (c: ClientData) => void, quickActions: string[], setQuickActions: any, themeColor: string, shopName: string, isDark: boolean, settings: ShopSettings, onShowSales: (feat: 'LOGO' | 'AI' | 'LIMIT') => void
 }) => {
   const [diagnosis, setDiagnosis] = useState('');
-  
-  // Pricing State
   const [useBreakdown, setUseBreakdown] = useState(client.useBreakdown || false);
   const [estimatedCost, setEstimatedCost] = useState<string>(client.estimatedCost ? formatCost(client.estimatedCost.toString()) : '');
   const [laborCost, setLaborCost] = useState<string>(client.laborCost ? formatCost(client.laborCost.toString()) : '');
   const [partsCost, setPartsCost] = useState<string>(client.partsCost ? formatCost(client.partsCost.toString()) : '');
-
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBeautifying, setIsBeautifying] = useState(false);
   const [isAddingAction, setIsAddingAction] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [generatedSms, setGeneratedSms] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [isSpeechSupported, setIsSpeechSupported] = useState(false); // Check support
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
   const photos = client.photos;
 
   useEffect(() => {
-    // Check speech support on mount
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      setIsSpeechSupported(true);
-    }
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) setIsSpeechSupported(true);
   }, []);
 
-  // Auto-calculate Total Cost when in Breakdown mode
   useEffect(() => {
     if (useBreakdown) {
       const l = parseCost(laborCost);
@@ -1075,14 +1068,9 @@ const WorkshopScreen = ({
         source: 'GALLERY',
         status: 'PENDING_UPLOAD'
       }));
-      
       const updatedClient = { ...client, photos: [...photos, ...newPhotos] };
       onUpdateClient(updatedClient);
-      
-      // Trigger upload IMMEDIATELY in background
-      if (isOnline) {
-        processPhotoUploads(updatedClient.photos);
-      }
+      if (isOnline) processPhotoUploads(updatedClient.photos);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -1093,27 +1081,17 @@ const WorkshopScreen = ({
 
   const processPhotoUploads = async (currentPhotos: PhotoEvidence[] = photos): Promise<string[]> => {
     if (!isOnline) return [];
-    
-    // Filter pending
     const pendingPhotos = currentPhotos.filter(p => !p.cloudUrl);
-    
-    // If nothing pending, return existing cloud URLs
-    if (pendingPhotos.length === 0) {
-        return currentPhotos.map(p => p.cloudUrl).filter(Boolean) as string[];
-    }
-
+    if (pendingPhotos.length === 0) return currentPhotos.map(p => p.cloudUrl).filter(Boolean) as string[];
     setUploadProgress(`Képek feltöltése...`);
     let updatedPhotos = [...currentPhotos];
-
     for (const photo of pendingPhotos) {
       const cloudUrl = await uploadImageToCloudinary(photo);
       if (cloudUrl) {
           updatedPhotos = updatedPhotos.map(p => p.id === photo.id ? { ...p, cloudUrl, status: 'UPLOADED' } : p);
-          // Update client state progressively so UI reflects uploaded status
           onUpdateClient({ ...client, photos: updatedPhotos }); 
       }
     }
-    
     setUploadProgress('');
     return updatedPhotos.map(p => p.cloudUrl).filter(Boolean) as string[];
   };
@@ -1132,29 +1110,19 @@ const WorkshopScreen = ({
 
   const startDictation = () => {
     if (!isSpeechSupported) return;
-    
     // @ts-ignore
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = 'hu-HU';
     recognition.interimResults = false;
-    
     setIsListening(true);
-    
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setDiagnosis(prev => prev ? prev + " " + transcript : transcript);
       setIsListening(false);
     };
-
-    recognition.onerror = () => {
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
     recognition.start();
   };
 
@@ -1166,7 +1134,6 @@ const WorkshopScreen = ({
     const numericLabor = parseCost(laborCost);
     const numericParts = parseCost(partsCost);
 
-    // Update Client Data with Costs
     onUpdateClient({ 
         ...client, 
         estimatedCost: numericCost,
@@ -1175,11 +1142,8 @@ const WorkshopScreen = ({
         useBreakdown: useBreakdown
     });
 
-    // Ensure uploads are done (usually they are already done in background)
     let photoUrls: string[] = [];
-    if (isOnline) {
-       photoUrls = await processPhotoUploads(client.photos);
-    }
+    if (isOnline) photoUrls = await processPhotoUploads(client.photos);
     
     const sms = generateStaticSms(
         type, 
@@ -1244,13 +1208,10 @@ const WorkshopScreen = ({
             {photos.map(photo => (
               <div key={photo.id} className={`aspect-square rounded-2xl overflow-hidden relative shadow-sm border group cursor-pointer ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-100'}`} onClick={() => setPreviewPhotoUrl(photo.url)}>
                 <img src={photo.url} className="w-full h-full object-cover" />
-                
-                {/* Upload Indicator */}
                 <div className="absolute bottom-1 left-1">
                     {photo.status === 'UPLOADED' && <div className="bg-emerald-500 text-white p-1 rounded-full shadow-sm"><Check size={8}/></div>}
                     {photo.status === 'PENDING_UPLOAD' && <div className="bg-orange-500 text-white p-1 rounded-full animate-spin shadow-sm"><Loader2 size={8}/></div>}
                 </div>
-
                 <button onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo.id); }} className="absolute top-1 right-1 bg-white/80 text-red-500 p-1.5 rounded-full shadow-sm hover:bg-white z-10"><X size={12} /></button>
                 <div className="absolute inset-0 flex items-center justify-center bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Maximize2 className="text-white drop-shadow-md" size={24} />
@@ -1289,11 +1250,7 @@ const WorkshopScreen = ({
                 />
                 
                 {isSpeechSupported && (
-                    <button 
-                    onClick={startDictation}
-                    className={`absolute bottom-3 left-3 p-2.5 rounded-full transition-all shadow-sm ${isListening ? 'bg-red-500 text-white animate-pulse' : (isDark ? 'bg-slate-700 text-gray-300' : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200')}`}
-                    title="Hangalapú bevitel"
-                    >
+                    <button onClick={startDictation} className={`absolute bottom-3 left-3 p-2.5 rounded-full transition-all shadow-sm ${isListening ? 'bg-red-500 text-white animate-pulse' : (isDark ? 'bg-slate-700 text-gray-300' : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200')}`} title="Hangalapú bevitel">
                     <Mic size={18} />
                     </button>
                 )}
@@ -1314,15 +1271,11 @@ const WorkshopScreen = ({
 
              {/* PRICING SECTION */}
              <div className={`p-5 rounded-2xl border shadow-sm ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-                <button 
-                    onClick={() => setUseBreakdown(!useBreakdown)}
-                    className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 hover:text-gray-400 transition-colors"
-                >
+                <button onClick={() => setUseBreakdown(!useBreakdown)} className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 hover:text-gray-400 transition-colors">
                     {useBreakdown ? <ToggleRight size={24} style={{color: themeColor}}/> : <ToggleLeft size={24}/>}
                     Anyag + Munkadíj külön (Ajánlott)
                 </button>
 
-                {/* TIP for breakdown */}
                 {useBreakdown && (
                   <div className={`mb-4 text-[11px] p-3 rounded-xl border flex items-start gap-2 leading-relaxed ${isDark ? 'bg-yellow-900/20 border-yellow-900/50 text-yellow-500' : 'bg-yellow-50 text-yellow-800 border-yellow-100'}`}>
                     <Lightbulb size={16} className="shrink-0 mt-0.5" />
@@ -1334,36 +1287,18 @@ const WorkshopScreen = ({
                     <div className="grid grid-cols-2 gap-3 mb-3 animate-fade-in-up">
                         <div>
                             <label className="text-[10px] uppercase font-bold text-gray-400 ml-1 mb-1 block">Alkatrész</label>
-                            <input 
-                                type="text" 
-                                value={partsCost}
-                                onChange={(e) => setPartsCost(formatCost(e.target.value))}
-                                placeholder="0"
-                                className={inputClass}
-                            />
+                            <input type="text" value={partsCost} onChange={(e) => setPartsCost(formatCost(e.target.value))} placeholder="0" className={inputClass}/>
                         </div>
                         <div>
                             <label className="text-[10px] uppercase font-bold text-gray-400 ml-1 mb-1 block">Munkadíj</label>
-                            <input 
-                                type="text" 
-                                value={laborCost}
-                                onChange={(e) => setLaborCost(formatCost(e.target.value))}
-                                placeholder="0"
-                                className={inputClass}
-                            />
+                            <input type="text" value={laborCost} onChange={(e) => setLaborCost(formatCost(e.target.value))} placeholder="0" className={inputClass}/>
                         </div>
                     </div>
                 ) : null}
 
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400"><Coins size={18}/></div>
-                    <input 
-                    type="text" 
-                    value={estimatedCost}
-                    readOnly={useBreakdown}
-                    onChange={(e) => !useBreakdown && setEstimatedCost(formatCost(e.target.value))}
-                    placeholder="Várható költség (Ft)"
-                    className={`w-full border-0 rounded-xl py-4 pl-12 pr-4 font-mono font-bold text-xl focus:ring-2 ${isDark ? 'bg-slate-900 text-white focus:ring-blue-500' : 'bg-white text-gray-900 focus:ring-blue-500'} ${useBreakdown ? (isDark ? 'bg-slate-900/50 text-gray-500' : 'bg-gray-100 text-gray-500 cursor-not-allowed') : ''}`}/>
+                    <input type="text" value={estimatedCost} readOnly={useBreakdown} onChange={(e) => !useBreakdown && setEstimatedCost(formatCost(e.target.value))} placeholder="Várható költség (Ft)" className={`w-full border-0 rounded-xl py-4 pl-12 pr-4 font-mono font-bold text-xl focus:ring-2 ${isDark ? 'bg-slate-900 text-white focus:ring-blue-500' : 'bg-white text-gray-900 focus:ring-blue-500'} ${useBreakdown ? (isDark ? 'bg-slate-900/50 text-gray-500' : 'bg-gray-100 text-gray-500 cursor-not-allowed') : ''}`}/>
                     {useBreakdown && <div className="absolute right-4 top-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">ÖSSZESEN</div>}
                 </div>
              </div>
@@ -1371,21 +1306,10 @@ const WorkshopScreen = ({
 
            {!generatedSms ? (
              <div className="mt-6 space-y-4">
-                <button 
-                  onClick={() => handleGenerateSMS('DIAGNOSIS')}
-                  disabled={!diagnosis || isProcessing}
-                  style={{backgroundColor: themeColor}}
-                  className={`w-full py-4 text-white rounded-xl font-bold shadow-xl transform transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2`}
-                >
+                <button onClick={() => handleGenerateSMS('DIAGNOSIS')} disabled={!diagnosis || isProcessing} style={{backgroundColor: themeColor}} className={`w-full py-4 text-white rounded-xl font-bold shadow-xl transform transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2`}>
                   {isProcessing ? <><Loader2 size={20} className="animate-spin" /> {uploadProgress || 'SMS Tervezése...'}</> : 'SMS TERVEZÉS (Diagnózis)'}
                 </button>
-                <button 
-                  onClick={() => { 
-                    onUpdateClient({ ...client, status: 'FINISHED' }); 
-                    handleGenerateSMS('FINISHED'); 
-                  }} 
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200/50 flex items-center justify-center gap-2 active:scale-95 transition-transform"
-                >
+                <button onClick={() => { onUpdateClient({ ...client, status: 'FINISHED' }); handleGenerateSMS('FINISHED'); }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200/50 flex items-center justify-center gap-2 active:scale-95 transition-transform">
                   <CheckCircle size={20} /> AUTÓ KÉSZ (Átvétel)
                 </button>
              </div>
@@ -1428,7 +1352,7 @@ const WorkshopScreen = ({
   );
 };
 
-// --- 5. APP COMPONENT ---
+// --- APP COMPONENT ---
 
 const App = () => {
   const [settings, setSettings] = useState<ShopSettings>(() => {
@@ -1483,6 +1407,32 @@ const App = () => {
   const handleOnboardingComplete = (newSettings: ShopSettings) => {
     setSettings({...newSettings, clientCountSinceBackup: 0});
     setCurrentView('DASHBOARD');
+  };
+
+  const handleAddClient = (data: any) => {
+    const activeCount = clients.filter(c => c.status === 'ACTIVE').length;
+    if (!settings?.isPro && activeCount >= 5) {
+      setShowSalesModal('LIMIT');
+      return;
+    }
+
+    const newClient: ClientData = {
+      id: Date.now().toString(),
+      ...data,
+      photos: [],
+      status: 'ACTIVE',
+      createdAt: Date.now()
+    };
+    setClients([newClient, ...clients]);
+    setCurrentView('DASHBOARD');
+    
+    if (settings) {
+      const newCount = (settings.clientCountSinceBackup || 0) + 1;
+      setSettings({...settings, clientCountSinceBackup: newCount});
+      if (newCount >= 5) {
+        setShowBackupReminder(true);
+      }
+    }
   };
 
   const handleStartNewClient = () => {
@@ -1599,6 +1549,7 @@ const App = () => {
       {currentView === 'DASHBOARD' && settings && (
         <DashboardScreen 
           settings={settings}
+          theme={theme}
           clients={clients} 
           onAdd={handleStartNewClient}
           onOpen={(id) => { setSelectedClientId(id); setCurrentView('WORKSHOP'); }}
@@ -1615,6 +1566,7 @@ const App = () => {
           client={activeClient} 
           themeColor={settings.themeColor} 
           isDark={settings.darkMode} 
+          theme={theme} 
           isOnline={isOnline} 
           onUpdateClient={handleUpdateClient} 
           onBack={() => { setSelectedClientId(null); setCurrentView('DASHBOARD'); }} 
@@ -1644,6 +1596,7 @@ const App = () => {
       {showSettingsModal && theme && settings && (
         <SettingsModal 
           onClose={() => setShowSettingsModal(false)} 
+          theme={theme} 
           onExport={handleExportData} 
           onImport={handleImportData} 
           quickActions={quickActions} 

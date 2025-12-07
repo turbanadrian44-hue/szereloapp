@@ -1,4 +1,3 @@
-
 import { TextureType, PhotoEvidence } from './types';
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from './config';
 

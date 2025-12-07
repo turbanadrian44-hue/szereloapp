@@ -1,4 +1,3 @@
-
 import { ThemeConfig } from './types';
 
 export const CLOUDINARY_CLOUD_NAME = 'dagkl5gci';

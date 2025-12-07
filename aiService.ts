@@ -1,7 +1,7 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { SmsType } from './types';
 
+// IDE KELL MAJD A SAJÁT API KULCSODAT BEÁLLÍTANI A KÖRNYEZETI VÁLTOZÓBAN
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const beautifyDiagnosisText = async (rawText: string): Promise<string> => {

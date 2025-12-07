@@ -1,4 +1,3 @@
-
 export type ClientStatus = 'ACTIVE' | 'FINISHED';
 export type SmsType = 'DIAGNOSIS' | 'FINISHED' | 'START';
 export type TextureType = 'none' | 'carbon' | 'metal';
